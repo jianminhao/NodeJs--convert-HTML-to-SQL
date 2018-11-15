@@ -1,19 +1,20 @@
 /*
  *  importHTML2Sql.js    - import HTML table into SQL statement.
- * 	Description: This program will look for pxx.html
- *  	and load the data to tables (generate the insert SQL). 
- * 
- * 	Author: jwang
- * 
+ * 	Description: This program will look for pxx.html in 2 level directory.
+ *  	and load the data to tables (generate the insert SQL).
+ *
+ * 	Author: jw
+ *
  *  Versions:
- *  10-17-18    jwang   1.0.0 - Generate SQL file from HTML files
- *  10-24-18    jwang   1.0.1 - Changed code to support 2 tables
- *  10-25-18    jwang   1.0.2 - Add log dir
- *  10-25-18    jwang   1.0.3 - Changed the process Dir to be 2 levels instead of 1 level. 
- *  11-01-18    jwang   1.0.4 - Add update SQL for merged case.
+ *  10-17-18    jw   1.0.0 - Generate SQL file from HTML files
+ *  10-24-18    jw   1.0.1 - Changed code to support 2 tables
+ *  10-25-18    jw   1.0.2 - Add log dir
+ *  10-25-18    jw   1.0.3 - Changed the process Dir to be 2 levels instead of 1 level.
+ *  11-01-18    jw   1.0.4 - Add update SQL for merged case.
+ *  11-15-18    jw   1.0.5 - Fixed some bugs.
  */
 
-var version = "1.0.4";
+var version = "1.0.5";
 process.chdir(__dirname); //make sure the working dir is correct
 
 //================================================================================
@@ -38,8 +39,7 @@ var oldProcessedFiles = [];
 var newProcessedFiles = [];
 
 // type p: p table column list, used to check if there are new columns needed.
-var oldColumnList_p = [
-];
+var oldColumnList_p = [];
 var newColumnList_p = [];
 
 // Update SQL list
@@ -81,12 +81,12 @@ if (LogDocRoot.length < 1) {
 }
 
 var logFilePath = LogDocRoot + "/log" + dateString + ".txt";
-var processedFileName = LogDocRoot + "/processed" + ".txt";
+var processedFileName = LogDocRoot + "/processed1" + ".txt";
 
 // Read Processed folder list
 InitProcessed();
 
-importSasQcMatrix(QCDocRoot);
+importFiles(QCDocRoot);
 
 //================================================================================
 // Finished the program
@@ -95,7 +95,7 @@ importSasQcMatrix(QCDocRoot);
 //================================================================================
 // Process function. Check folders, subfolders and then process files base on ite type.
 //================================================================================
-function importSasQcMatrix(rootPath) {
+function importFiles(rootPath) {
 	getDirsSync(rootPath).forEach(function(fdr) {
 		var runFolder = fdr;
 		var runFolderPath = path
@@ -103,16 +103,9 @@ function importSasQcMatrix(rootPath) {
 			.trim()
 			.replace(/[\/\\]/g, "/");
 
-		// Check if it is already inside processed file. If yes, skip. Otherwise insert in the list.
-		//if (isProcessed(fdr)) {
-		//	log("Skip processed: " + runFolderPath);
-		//} else
 		if (runFolder.match(/combine/)) {
-			// Skip combined folder
 			log("Skip Combined: " + runFolderPath);
 		} else {
-			//newProcessedFiles.push(fdr);
-
 			getDirsSync(runFolderPath).forEach(function(libFolder) {
 				var processLibFolder = fdr + "/" + libFolder;
 
@@ -134,7 +127,7 @@ function importSasQcMatrix(rootPath) {
 								.trim()
 								.replace(/[\/\\]/g, "/");
 							try {
-									parsemapping(libFilePath, "p", runFolder, libFolder);
+								parsemapping(libFilePath, "p", runFolder, libFolder);
 							} catch (e) {
 								log("Problems happened:" + libFilePath + e.message);
 							}
@@ -167,7 +160,7 @@ function parsemapping(inFilePath, fileType, roundID, libID) {
 	htmlSource = fs.readFileSync(inFilePath, "utf8");
 	//log('Parsing started...' + inFilePath);
 
-	var tableName = getTableName(fileType);
+	var tableName = "test_table";
 	var sqlContents = "";
 
 	call_jsdom(htmlSource, function(window) {
@@ -271,17 +264,7 @@ function parsemapping(inFilePath, fileType, roundID, libID) {
 							}
 						});
 					if (columnNames.length > 0) {
-						columnNames.push("RowNo");
-						columnNames.push("DateInsert");
-						columnNames.push("RoundID");
-						columnNames.push("LibID");
-
 						colunmString = columnNames.join(",");
-
-						// Below are for Create Table SQL use only.
-						//var columnCreateSqls = columnCreateSql.join(",");
-						//var createTableSql = "CREATE TABLE " + tableName + "(" + columnCreateSqls + ");";
-						//log(createTableSql);
 					}
 				} else {
 					// For regular data, process below
@@ -296,19 +279,18 @@ function parsemapping(inFilePath, fileType, roundID, libID) {
 					//Validate the data with column, Since column pushed additional 4 columns, so +4
 					//In case there are two tables in one file, it will go into this code, ignore
 					//if (secondTableFlag === 0) {
-					if (columnNames.length != rowData.length ) {
+					if (columnNames.length != rowData.length) {
 						log("columns.length != rowData.length! " + columnNames.length + " vs " + rowData.length + inFilePath);
 					} else {
+						colunmString = columnNames.join(",");
 						rowSql = rowData.join(",");
 						if (rowSql.match(/SpecialString/)) {
 							log("A Second table that contains title" + rowData + inFilePath);
 						} else {
-							rowSql += ", " + nRowID + ", SYSDATE, '" + roundID + "', '" + libID + "'";
 							OneFullSql = "INSERT INTO " + tableName + " (" + colunmString + ") VALUES (" + rowSql + ");\n";
 							sqlContents += OneFullSql;
 						}
 					}
-					//}
 					nRowID++;
 				}
 			});
@@ -325,7 +307,6 @@ function parsemapping(inFilePath, fileType, roundID, libID) {
 		}
 	});
 }
-
 
 //================================================================================
 // Check if there are new columns need to be added to existing table
@@ -422,7 +403,6 @@ function loadParameters(callback) {
 
 	return callback(false);
 }
-
 
 function InitProcessed() {
 	log("===========================================================");
